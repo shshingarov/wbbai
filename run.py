@@ -2,17 +2,15 @@
 # -*- coding: utf-8 -*-
 
 import os
-import time
 import logging
 import asyncio
-import html
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 
 from dotenv import load_dotenv
 
 # Импорт классов и функций из aiogram v3.x
 from aiogram import Bot, Dispatcher, Router, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 
@@ -60,9 +58,6 @@ dp.include_router(router)
 
 # Словарь для хранения связки user_id -> thread_id.
 user_threads: Dict[int, str] = {}
-
-# Глобальная переменная для хранения главного event loop.
-MAIN_LOOP: Optional[asyncio.AbstractEventLoop] = None
 
 # -----------------------------------------------------------------------------
 #                        КЛАСС ДЛЯ РАБОТЫ С OpenAI (Beta)
@@ -297,57 +292,45 @@ class OpenAIClientAsync:
             except Exception:
                 return str(content.text)
 
-    async def poll_run_steps(self, thread_id: str, run_id: str, chat_id: int,
-                            bot: Bot,
-                            max_attempts: int = 20, interval: int = 1) -> str:
+    async def poll_run_steps(
+        self,
+        thread_id: str,
+        run_id: str,
+        chat_id: int,
+        bot: Bot,
+        max_attempts: int = 20,
+        interval: int = 1,
+    ) -> str:
+        """Ожидаем появления ответа ассистента."""
         final_answer: Optional[str] = None
         for attempt in range(1, max_attempts + 1):
             try:
                 await bot.send_chat_action(chat_id, action="typing")
             except Exception:
                 pass
+
             steps = await self.get_run_steps(thread_id, run_id)
             for step in steps:
-                step_details = getattr(step, "step_details", None)
-                if step_details and getattr(step_details, "type", "") == "message_creation":
-                    msg_creation = step_details.message_creation
-                    message_id = getattr(msg_creation, "message_id", None)
-                    if message_id:
-                        msg_obj = await self.retrieve_message(thread_id, message_id)
-                        if msg_obj:
-                            content = getattr(msg_obj, "content", None)
-                            final_answer = self.extract_text_from_content(content)
-        try:
-            await bot.send_chat_action(chat_id, action="typing")
-        except Exception:
-            pass
-        steps = await self.get_run_steps(thread_id, run_id)
-        for step in steps:
-            step_details = getattr(step, "step_details", None)
-            if step_details and getattr(step_details, "type", "") == "message_creation":
-                msg_creation = step_details.message_creation
-                message_id = getattr(msg_creation, "message_id", None)
-                if message_id:
-                    msg_obj = await self.retrieve_message(thread_id, message_id)
-                    if msg_obj:
-                        content = getattr(msg_obj, "content", None)
-                        final_answer = self.extract_text_from_content(content)
-            steps = await self.get_run_steps(thread_id, run_id)
-            for step in steps:
-                step_details = getattr(step, "step_details", None)
-                if step_details and getattr(step_details, "type", "") == "message_creation":
-                    msg_creation = step_details.message_creation
-                    message_id = getattr(msg_creation, "message_id", None)
-                    if message_id:
-                        msg_obj = await self.retrieve_message(thread_id, message_id)
+                details = getattr(step, "step_details", None)
+                if details and getattr(details, "type", "") == "message_creation":
+                    msg_id = getattr(details.message_creation, "message_id", None)
+                    if msg_id:
+                        msg_obj = await self.retrieve_message(thread_id, msg_id)
                         if msg_obj:
                             content = getattr(msg_obj, "content", None)
                             final_answer = self.extract_text_from_content(content)
                             if final_answer and final_answer.strip():
-                                self.logger.info(f"Ответ ассистента получен на попытке {attempt}.")
+                                self.logger.info(
+                                    f"Ответ ассистента получен на попытке {attempt}."
+                                )
                                 return final_answer
+
             await asyncio.sleep(interval)
-        return final_answer or "❗️ Не удалось получить ответ от ассистента. Попробуйте позже."
+
+        return (
+            final_answer
+            or "❗️ Не удалось получить ответ от ассистента. Попробуйте позже."
+        )
 
     async def process_user_request(self, thread_id: str, user_question: str, chat_id: int, bot: Bot, tools: Optional[list] = None) -> str:
         ok = await self.send_message(thread_id, user_question)
@@ -362,13 +345,7 @@ class OpenAIClientAsync:
 # Инициализация асинхронного клиента
 openai_client_async = OpenAIClientAsync(api_key=OPENAI_API_KEY, assistant_id=ASSISTANT_ID, logger=logger)
 
-# Красивая клавиатура для UX
-main_keyboard = InlineKeyboardMarkup(
-    inline_keyboard=[
-        [InlineKeyboardButton(text="Задать новый вопрос", callback_data="ask_new")],
-        [InlineKeyboardButton(text="Начать заново", callback_data="start_over")]
-    ]
-)
+
 
 # -----------------------------------------------------------------------------
 #                   ОБРАБОТЧИКИ СООБЩЕНИЙ TELEGRAM (aiogram v3.x)
@@ -398,9 +375,41 @@ async def cmd_start(message: types.Message):
     welcome_text = (
         f"Привет, я твой помощник!\n"
         f"Твой thread ID: <code>{thread_id}</code>\n"
-        f"Чтобы задать вопрос, используй команду: /ask &lt;твой вопрос&gt;"
+        f"Задай вопрос командой: /ask &lt;твой вопрос&gt;\n"
+        f"Команда /help покажет все доступные действия."
     )
     await message.answer(welcome_text, parse_mode=ParseMode.HTML)
+
+
+@router.message(Command("help"))
+async def cmd_help(message: types.Message):
+    """Показываем справку по командам."""
+    help_text = (
+        "Доступные команды:\n"
+        "/start - начать работу с ботом\n"
+        "/ask &lt;вопрос&gt; - задать вопрос ассистенту\n"
+        "/reset - начать новый диалог"
+    )
+    await message.answer(help_text, parse_mode=ParseMode.HTML)
+
+
+@router.message(Command("reset"))
+async def cmd_reset(message: types.Message):
+    """Сбросить текущий диалог и создать новый thread."""
+    user_id = message.from_user.id
+    try:
+        thread_id = await openai_client_async.create_thread()
+        if not thread_id:
+            await message.answer("Ошибка: не удалось создать новый thread.")
+            return
+        user_threads[user_id] = thread_id
+        await message.answer(
+            "Начинаем новый диалог. Можешь задать вопрос командой /ask",
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception as e:
+        logger.exception("Ошибка при сбросе диалога")
+        await message.answer(f"Ошибка сброса: {e}")
 
 @router.message(Command("ask"))
 async def cmd_ask(message: types.Message):
@@ -419,14 +428,18 @@ async def cmd_ask(message: types.Message):
         return
 
     user_question = parts[1].strip()
-    await message.answer("Подумаем над ответом…")
+    await message.answer("Секунду, думаю…")
 
     try:
         answer = await openai_client_async.process_user_request(thread_id, user_question, message.chat.id, bot)
         # Удаляем все <br> и <br/> для Telegram
         import re
         answer = re.sub(r'<br\s*/?>', '\n', answer)
-        await message.answer(f"Ответ ассистента:\n\n{answer}", parse_mode=ParseMode.HTML)
+        await message.answer(
+            f"Ответ ассистента:\n\n{answer}\n\n"
+            "Задай новый вопрос командой /ask или перезапусти диалог /reset.",
+            parse_mode=ParseMode.HTML,
+        )
 
     except Exception as e:
         logger.exception("Ошибка при получении ответа от ассистента.")
@@ -439,9 +452,14 @@ async def handle_text_messages(message: types.Message):
     Обработчик любых текстовых сообщений, которые не являются командами.
     """
     if message.text.startswith("/"):
-        await message.answer("Неизвестная команда. Попробуйте /start или /ask.")
+        await message.answer(
+            "Неизвестная команда. Используйте /help для списка команд."
+        )
     else:
-        await message.answer("Вы отправили сообщение без команды. Если хотите задать вопрос ассистенту, используйте /ask <твой вопрос>.")
+        await message.answer(
+            "Вы отправили сообщение без команды. Используйте /ask <вопрос> "
+            "или посмотрите справку командой /help."
+        )
 
 @router.message(lambda message: message.content_type == "photo")
 async def handle_photo_messages(message: types.Message):
@@ -454,8 +472,6 @@ async def handle_photo_messages(message: types.Message):
 #                              ЗАПУСК БОТА (aiogram v3.x)
 # -----------------------------------------------------------------------------
 async def main():
-    global MAIN_LOOP
-    MAIN_LOOP = asyncio.get_running_loop()
     logger.info("Запускаем Telegram-бота на aiogram v3.x...")
     await dp.start_polling(bot)
 
