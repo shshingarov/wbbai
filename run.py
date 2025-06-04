@@ -18,6 +18,7 @@ from aiogram.enums import ParseMode
 from openai import OpenAI
 
 import nest_asyncio
+
 nest_asyncio.apply()
 
 # -----------------------------------------------------------------------------
@@ -27,10 +28,14 @@ load_dotenv()
 
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-ASSISTANT_ID = os.getenv("ASSISTANT_ID", "asst_3M2ZQIU1n6kiRzLFrdKpCVTW")  # можно задавать в .env
+ASSISTANT_ID = os.getenv(
+    "ASSISTANT_ID", "asst_3M2ZQIU1n6kiRzLFrdKpCVTW"
+)  # можно задавать в .env
 
 if not TELEGRAM_BOT_TOKEN:
-    raise ValueError("Не найден TELEGRAM_BOT_TOKEN в переменных окружения (.env).")
+    raise ValueError(
+        "Не найден TELEGRAM_BOT_TOKEN в переменных окружения (.env)."
+    )
 if not OPENAI_API_KEY:
     raise ValueError("Не найден OPENAI_API_KEY в переменных окружения (.env).")
 
@@ -39,7 +44,7 @@ if not OPENAI_API_KEY:
 # -----------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s"
+    format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -64,20 +69,24 @@ user_threads: Dict[int, str] = {}
 # -----------------------------------------------------------------------------
 
 
-
 class OpenAIClientAsync:
-    """
-    Асинхронный клиент для работы с OpenAI Assistants API (https://platform.openai.com/docs/api-reference/assistants).
-    Поддерживает ассистентов, threads, messages, runs, steps, файлы, инструменты.
-    Все методы асинхронные через asyncio.to_thread.
+    """Асинхронный клиент для работы с OpenAI Assistants API.
+
+    Ссылки на документацию:
+    https://platform.openai.com/docs/api-reference/assistants.
+    Поддерживает ассистентов, threads, messages, runs, steps,
+    файлы и инструменты. Все методы асинхронные через ``asyncio.to_thread``.
     Пример использования:
         client = OpenAIClientAsync(api_key, assistant_id, logger)
         thread_id = await client.create_thread()
-        await client.send_message(thread_id, 'Привет!')
+        await client.send_message(thread_id, "Привет!")
         run_id = await client.run_assistant(thread_id)
         answer = await client.poll_run_steps(thread_id, run_id, chat_id, bot)
     """
-    def __init__(self, api_key: str, assistant_id: str, logger: logging.Logger):
+
+    def __init__(
+        self, api_key: str, assistant_id: str, logger: logging.Logger
+    ):
         self.client = OpenAI(api_key=api_key)
         self.assistant_id = assistant_id
         self.logger = logger
@@ -86,7 +95,9 @@ class OpenAIClientAsync:
     async def create_assistant(self, **kwargs) -> Optional[Any]:
         """Создать нового ассистента."""
         try:
-            assistant = await asyncio.to_thread(self.client.beta.assistants.create, **kwargs)
+            assistant = await asyncio.to_thread(
+                self.client.beta.assistants.create, **kwargs
+            )
             self.logger.info(f"Создан ассистент: {assistant.id}")
             return assistant
         except Exception as e:
@@ -96,15 +107,21 @@ class OpenAIClientAsync:
     async def retrieve_assistant(self, assistant_id: str) -> Optional[Any]:
         """Получить ассистента по ID."""
         try:
-            return await asyncio.to_thread(self.client.beta.assistants.retrieve, assistant_id)
+            return await asyncio.to_thread(
+                self.client.beta.assistants.retrieve, assistant_id
+            )
         except Exception as e:
             self.logger.error(f"Ошибка получения ассистента: {e}")
             return None
 
-    async def update_assistant(self, assistant_id: str, **kwargs) -> Optional[Any]:
+    async def update_assistant(
+        self, assistant_id: str, **kwargs
+    ) -> Optional[Any]:
         """Обновить ассистента."""
         try:
-            return await asyncio.to_thread(self.client.beta.assistants.update, assistant_id, **kwargs)
+            return await asyncio.to_thread(
+                self.client.beta.assistants.update, assistant_id, **kwargs
+            )
         except Exception as e:
             self.logger.error(f"Ошибка обновления ассистента: {e}")
             return None
@@ -112,7 +129,9 @@ class OpenAIClientAsync:
     async def delete_assistant(self, assistant_id: str) -> bool:
         """Удалить ассистента."""
         try:
-            await asyncio.to_thread(self.client.beta.assistants.delete, assistant_id)
+            await asyncio.to_thread(
+                self.client.beta.assistants.delete, assistant_id
+            )
             self.logger.info(f"Ассистент {assistant_id} удалён")
             return True
         except Exception as e:
@@ -132,16 +151,20 @@ class OpenAIClientAsync:
     async def create_thread(self) -> Optional[str]:
         """Создать новый thread и вернуть его ID."""
         try:
-            thread_obj = await asyncio.to_thread(self.client.beta.threads.create)
+            thread_obj = await asyncio.to_thread(
+                self.client.beta.threads.create
+            )
             self.logger.info(f"Создан новый thread с id: {thread_obj.id}")
             return thread_obj.id
         except Exception as e:
-            self.logger.exception("Ошибка при создании thread.")
+            self.logger.exception("Ошибка при создании thread: %s", e)
             return None
 
     async def retrieve_thread(self, thread_id: str) -> Optional[Any]:
         try:
-            return await asyncio.to_thread(self.client.beta.threads.retrieve, thread_id)
+            return await asyncio.to_thread(
+                self.client.beta.threads.retrieve, thread_id
+            )
         except Exception as e:
             self.logger.error(f"Ошибка получения thread: {e}")
             return None
@@ -156,7 +179,9 @@ class OpenAIClientAsync:
             return False
 
     # ---------- MESSAGES ----------
-    async def send_message(self, thread_id: str, message: str, role: str = "user") -> bool:
+    async def send_message(
+        self, thread_id: str, message: str, role: str = "user"
+    ) -> bool:
         """Отправить сообщение в thread (user/assistant)."""
         try:
             await asyncio.to_thread(
@@ -165,15 +190,21 @@ class OpenAIClientAsync:
                 role=role,
                 content=message,
             )
-            self.logger.info(f"Сообщение ({role}) отправлено в thread {thread_id}")
+            self.logger.info(
+                f"Сообщение ({role}) отправлено в thread {thread_id}"
+            )
             return True
         except Exception as e:
-            self.logger.exception(f"Ошибка при отправке сообщения в thread {thread_id}.")
+            self.logger.exception(
+                f"Ошибка при отправке сообщения в thread {thread_id}: %s", e
+            )
             return False
 
     async def list_messages(self, thread_id: str) -> list:
         try:
-            page = await asyncio.to_thread(self.client.beta.threads.messages.list, thread_id)
+            page = await asyncio.to_thread(
+                self.client.beta.threads.messages.list, thread_id
+            )
             return list(page)
         except Exception as e:
             self.logger.error(f"Ошибка получения сообщений: {e}")
@@ -187,33 +218,54 @@ class OpenAIClientAsync:
                 message_id=message_id,
             )
         except Exception as e:
-            self.logger.exception(f"Ошибка при извлечении сообщения {message_id} из thread {thread_id}.")
+            self.logger.exception(
+                "Ошибка при извлечении сообщения %s из thread %s: %s",
+                message_id,
+                thread_id,
+                e,
+            )
             return None
 
     # ---------- RUNS ----------
-    async def run_assistant(self, thread_id: str, tools: Optional[list] = None) -> Optional[str]:
-        """Запустить ассистента на thread. tools — список инструментов (code_interpreter, retrieval, function)."""
+    async def run_assistant(
+        self, thread_id: str, tools: Optional[list] = None
+    ) -> Optional[str]:
+        """Запустить ассистента на thread.
+
+        Аргумент ``tools`` — список инструментов
+        (``code_interpreter``, ``retrieval``, ``function``).
+        """
         try:
             kwargs = dict(assistant_id=self.assistant_id, thread_id=thread_id)
             if tools:
                 kwargs["tools"] = tools
-            run_obj = await asyncio.to_thread(self.client.beta.threads.runs.create, **kwargs)
+            run_obj = await asyncio.to_thread(
+                self.client.beta.threads.runs.create, **kwargs
+            )
             self.logger.info(f"Создан run {run_obj.id} для thread {thread_id}")
             return run_obj.id
         except Exception as e:
-            self.logger.exception(f"Ошибка при создании run для thread {thread_id}.")
+            self.logger.exception(
+                f"Ошибка при создании run для thread {thread_id}: %s", e
+            )
             return None
 
     async def retrieve_run(self, thread_id: str, run_id: str) -> Any:
         try:
-            return await asyncio.to_thread(self.client.beta.threads.runs.retrieve, thread_id=thread_id, run_id=run_id)
+            return await asyncio.to_thread(
+                self.client.beta.threads.runs.retrieve,
+                thread_id=thread_id,
+                run_id=run_id,
+            )
         except Exception as e:
             self.logger.error(f"Ошибка получения run: {e}")
             return None
 
     async def list_runs(self, thread_id: str) -> list:
         try:
-            page = await asyncio.to_thread(self.client.beta.threads.runs.list, thread_id=thread_id)
+            page = await asyncio.to_thread(
+                self.client.beta.threads.runs.list, thread_id=thread_id
+            )
             return list(page)
         except Exception as e:
             self.logger.error(f"Ошибка получения списка runs: {e}")
@@ -225,19 +277,25 @@ class OpenAIClientAsync:
             steps_page = await asyncio.to_thread(
                 self.client.beta.threads.runs.steps.list,
                 thread_id=thread_id,
-                run_id=run_id
+                run_id=run_id,
             )
             return list(steps_page)
         except Exception as e:
-            self.logger.exception(f"Ошибка при получении run steps для run {run_id}.")
+            self.logger.exception(
+                f"Ошибка при получении run steps для run {run_id}: %s", e
+            )
             return []
 
     # ---------- FILES ----------
-    async def upload_file(self, file_path: str, purpose: str = "assistants") -> Optional[str]:
+    async def upload_file(
+        self, file_path: str, purpose: str = "assistants"
+    ) -> Optional[str]:
         """Загрузить файл для ассистента/инструмента."""
         try:
             with open(file_path, "rb") as f:
-                file_obj = await asyncio.to_thread(self.client.files.create, file=f, purpose=purpose)
+                file_obj = await asyncio.to_thread(
+                    self.client.files.create, file=f, purpose=purpose
+                )
             self.logger.info(f"Файл {file_obj.id} загружен для {purpose}")
             return file_obj.id
         except Exception as e:
@@ -246,7 +304,13 @@ class OpenAIClientAsync:
 
     async def list_files(self, purpose: Optional[str] = None) -> list:
         try:
-            page = await asyncio.to_thread(self.client.files.list, purpose=purpose) if purpose else await asyncio.to_thread(self.client.files.list)
+            page = (
+                await asyncio.to_thread(
+                    self.client.files.list, purpose=purpose
+                )
+                if purpose
+                else await asyncio.to_thread(self.client.files.list)
+            )
             return list(page)
         except Exception as e:
             self.logger.error(f"Ошибка получения списка файлов: {e}")
@@ -312,16 +376,26 @@ class OpenAIClientAsync:
             steps = await self.get_run_steps(thread_id, run_id)
             for step in steps:
                 details = getattr(step, "step_details", None)
-                if details and getattr(details, "type", "") == "message_creation":
-                    msg_id = getattr(details.message_creation, "message_id", None)
+                if (
+                    details
+                    and getattr(details, "type", "") == "message_creation"
+                ):
+                    msg_id = getattr(
+                        details.message_creation, "message_id", None
+                    )
                     if msg_id:
-                        msg_obj = await self.retrieve_message(thread_id, msg_id)
+                        msg_obj = await self.retrieve_message(
+                            thread_id, msg_id
+                        )
                         if msg_obj:
                             content = getattr(msg_obj, "content", None)
-                            final_answer = self.extract_text_from_content(content)
+                            final_answer = self.extract_text_from_content(
+                                content
+                            )
                             if final_answer and final_answer.strip():
                                 self.logger.info(
-                                    f"Ответ ассистента получен на попытке {attempt}."
+                                    "Ответ ассистента получен на попытке %s",
+                                    attempt,
                                 )
                                 return final_answer
 
@@ -332,29 +406,42 @@ class OpenAIClientAsync:
             or "❗️ Не удалось получить ответ от ассистента. Попробуйте позже."
         )
 
-    async def process_user_request(self, thread_id: str, user_question: str, chat_id: int, bot: Bot, tools: Optional[list] = None) -> str:
+    async def process_user_request(
+        self,
+        thread_id: str,
+        user_question: str,
+        chat_id: int,
+        bot: Bot,
+        tools: Optional[list] = None,
+    ) -> str:
         ok = await self.send_message(thread_id, user_question)
         if not ok:
             return "❗️ Ошибка при отправке сообщения. Попробуйте позже."
         run_id = await self.run_assistant(thread_id, tools=tools)
         if not run_id:
             return "❗️ Ошибка при запуске ассистента. Попробуйте позже."
-        final_answer = await self.poll_run_steps(thread_id, run_id, chat_id=chat_id, bot=bot)
+        final_answer = await self.poll_run_steps(
+            thread_id, run_id, chat_id=chat_id, bot=bot
+        )
         return final_answer
 
-# Инициализация асинхронного клиента
-openai_client_async = OpenAIClientAsync(api_key=OPENAI_API_KEY, assistant_id=ASSISTANT_ID, logger=logger)
 
+# Инициализация асинхронного клиента
+openai_client_async = OpenAIClientAsync(
+    api_key=OPENAI_API_KEY, assistant_id=ASSISTANT_ID, logger=logger
+)
 
 
 # -----------------------------------------------------------------------------
 #                   ОБРАБОТЧИКИ СООБЩЕНИЙ TELEGRAM (aiogram v3.x)
 # -----------------------------------------------------------------------------
 
+
 @router.message(Command("start"))
 async def cmd_start(message: types.Message):
-    """
-    Обработчик команды /start. Создает (или восстанавливает) thread для пользователя.
+    """Обработчик команды /start.
+
+    Создает (или восстанавливает) thread для пользователя.
     """
     user_id = message.from_user.id
     if user_id not in user_threads:
@@ -364,9 +451,13 @@ async def cmd_start(message: types.Message):
                 await message.answer("Ошибка: не получен thread ID от OpenAI.")
                 return
             user_threads[user_id] = thread_id
-            logger.info(f"Thread {thread_id} создан для пользователя {user_id}")
+            logger.info(
+                f"Thread {thread_id} создан для пользователя {user_id}"
+            )
         except Exception as e:
-            logger.exception(f"Ошибка создания thread для пользователя {user_id}.")
+            logger.exception(
+                f"Ошибка создания thread для пользователя {user_id}: %s", e
+            )
             await message.answer(f"Ошибка при создании thread: {e}")
             return
     else:
@@ -408,8 +499,9 @@ async def cmd_reset(message: types.Message):
             parse_mode=ParseMode.HTML,
         )
     except Exception as e:
-        logger.exception("Ошибка при сбросе диалога")
+        logger.exception("Ошибка при сбросе диалога: %s", e)
         await message.answer(f"Ошибка сброса: {e}")
+
 
 @router.message(Command("ask"))
 async def cmd_ask(message: types.Message):
@@ -431,10 +523,13 @@ async def cmd_ask(message: types.Message):
     await message.answer("Секунду, думаю…")
 
     try:
-        answer = await openai_client_async.process_user_request(thread_id, user_question, message.chat.id, bot)
+        answer = await openai_client_async.process_user_request(
+            thread_id, user_question, message.chat.id, bot
+        )
         # Удаляем все <br> и <br/> для Telegram
         import re
-        answer = re.sub(r'<br\s*/?>', '\n', answer)
+
+        answer = re.sub(r"<br\s*/?>", "\n", answer)
         await message.answer(
             f"Ответ ассистента:\n\n{answer}\n\n"
             "Задай новый вопрос командой /ask или перезапусти диалог /reset.",
@@ -442,8 +537,10 @@ async def cmd_ask(message: types.Message):
         )
 
     except Exception as e:
-        logger.exception("Ошибка при получении ответа от ассистента.")
-        await message.answer(f"Произошла ошибка: {e}", parse_mode=ParseMode.HTML)
+        logger.exception("Ошибка при получении ответа от ассистента: %s", e)
+        await message.answer(
+            f"Произошла ошибка: {e}", parse_mode=ParseMode.HTML
+        )
 
 
 @router.message(lambda message: message.content_type == "text")
@@ -461,19 +558,26 @@ async def handle_text_messages(message: types.Message):
             "или посмотрите справку командой /help."
         )
 
+
 @router.message(lambda message: message.content_type == "photo")
 async def handle_photo_messages(message: types.Message):
     """
     Пример обработки фото: пока бот не умеет обрабатывать изображения.
     """
-    await message.answer("Вы прислали фото, но я пока не умею его обрабатывать.")
+    await message.answer(
+        "Вы прислали фото, но я пока не умею его обрабатывать."
+    )
+
 
 # -----------------------------------------------------------------------------
 #                              ЗАПУСК БОТА (aiogram v3.x)
 # -----------------------------------------------------------------------------
+
+
 async def main():
     logger.info("Запускаем Telegram-бота на aiogram v3.x...")
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
