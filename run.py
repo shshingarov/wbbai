@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 
 # Импорт классов и функций из aiogram v3.x
 from aiogram import Bot, Dispatcher, Router, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 
@@ -48,7 +47,7 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
 #                       ИНИЦИАЛИЗАЦИЯ КЛИЕНТА OpenAI
 # -----------------------------------------------------------------------------
-
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # -----------------------------------------------------------------------------
 #                   ИНИЦИАЛИЗАЦИЯ TELEGRAM-БОТА (aiogram v3.x)
@@ -68,74 +67,18 @@ MAIN_LOOP: Optional[asyncio.AbstractEventLoop] = None
 #                        КЛАСС ДЛЯ РАБОТЫ С OpenAI (Beta)
 # -----------------------------------------------------------------------------
 
-
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 class OpenAIClientAsync:
     """
-    Асинхронный клиент для работы с OpenAI Assistants API (https://platform.openai.com/docs/api-reference/assistants).
-    Поддерживает ассистентов, threads, messages, runs, steps, файлы, инструменты.
-    Все методы асинхронные через asyncio.to_thread.
-    Пример использования:
-        client = OpenAIClientAsync(api_key, assistant_id, logger)
-        thread_id = await client.create_thread()
-        await client.send_message(thread_id, 'Привет!')
-        run_id = await client.run_assistant(thread_id)
-        answer = await client.poll_run_steps(thread_id, run_id, chat_id, bot)
+    Асинхронный клиент для работы с OpenAI Assistant API (beta).
     """
     def __init__(self, api_key: str, assistant_id: str, logger: logging.Logger):
         self.client = OpenAI(api_key=api_key)
         self.assistant_id = assistant_id
         self.logger = logger
 
-    # ---------- ASSISTANTS CRUD ----------
-    async def create_assistant(self, **kwargs) -> Optional[Any]:
-        """Создать нового ассистента."""
-        try:
-            assistant = await asyncio.to_thread(self.client.beta.assistants.create, **kwargs)
-            self.logger.info(f"Создан ассистент: {assistant.id}")
-            return assistant
-        except Exception as e:
-            self.logger.error(f"Ошибка создания ассистента: {e}")
-            return None
-
-    async def retrieve_assistant(self, assistant_id: str) -> Optional[Any]:
-        """Получить ассистента по ID."""
-        try:
-            return await asyncio.to_thread(self.client.beta.assistants.retrieve, assistant_id)
-        except Exception as e:
-            self.logger.error(f"Ошибка получения ассистента: {e}")
-            return None
-
-    async def update_assistant(self, assistant_id: str, **kwargs) -> Optional[Any]:
-        """Обновить ассистента."""
-        try:
-            return await asyncio.to_thread(self.client.beta.assistants.update, assistant_id, **kwargs)
-        except Exception as e:
-            self.logger.error(f"Ошибка обновления ассистента: {e}")
-            return None
-
-    async def delete_assistant(self, assistant_id: str) -> bool:
-        """Удалить ассистента."""
-        try:
-            await asyncio.to_thread(self.client.beta.assistants.delete, assistant_id)
-            self.logger.info(f"Ассистент {assistant_id} удалён")
-            return True
-        except Exception as e:
-            self.logger.error(f"Ошибка удаления ассистента: {e}")
-            return False
-
-    async def list_assistants(self) -> list:
-        """Список ассистентов."""
-        try:
-            page = await asyncio.to_thread(self.client.beta.assistants.list)
-            return list(page)
-        except Exception as e:
-            self.logger.error(f"Ошибка получения списка ассистентов: {e}")
-            return []
-
-    # ---------- THREADS ----------
     async def create_thread(self) -> Optional[str]:
-        """Создать новый thread и вернуть его ID."""
         try:
             thread_obj = await asyncio.to_thread(self.client.beta.threads.create)
             self.logger.info(f"Создан новый thread с id: {thread_obj.id}")
@@ -144,88 +87,34 @@ class OpenAIClientAsync:
             self.logger.exception("Ошибка при создании thread.")
             return None
 
-    async def retrieve_thread(self, thread_id: str) -> Optional[Any]:
-        try:
-            return await asyncio.to_thread(self.client.beta.threads.retrieve, thread_id)
-        except Exception as e:
-            self.logger.error(f"Ошибка получения thread: {e}")
-            return None
-
-    async def delete_thread(self, thread_id: str) -> bool:
-        try:
-            await asyncio.to_thread(self.client.beta.threads.delete, thread_id)
-            self.logger.info(f"Thread {thread_id} удалён")
-            return True
-        except Exception as e:
-            self.logger.error(f"Ошибка удаления thread: {e}")
-            return False
-
-    # ---------- MESSAGES ----------
-    async def send_message(self, thread_id: str, message: str, role: str = "user") -> bool:
-        """Отправить сообщение в thread (user/assistant)."""
+    async def send_message(self, thread_id: str, message: str) -> bool:
         try:
             await asyncio.to_thread(
                 self.client.beta.threads.messages.create,
                 thread_id=thread_id,
-                role=role,
+                role="user",
                 content=message,
             )
-            self.logger.info(f"Сообщение ({role}) отправлено в thread {thread_id}")
+            self.logger.info(f"Сообщение пользователя отправлено в thread {thread_id}")
             return True
         except Exception as e:
             self.logger.exception(f"Ошибка при отправке сообщения в thread {thread_id}.")
             return False
 
-    async def list_messages(self, thread_id: str) -> list:
+    async def run_assistant(self, thread_id: str) -> Optional[str]:
         try:
-            page = await asyncio.to_thread(self.client.beta.threads.messages.list, thread_id)
-            return list(page)
-        except Exception as e:
-            self.logger.error(f"Ошибка получения сообщений: {e}")
-            return []
-
-    async def retrieve_message(self, thread_id: str, message_id: str) -> Any:
-        try:
-            return await asyncio.to_thread(
-                self.client.beta.threads.messages.retrieve,
+            run_obj = await asyncio.to_thread(
+                self.client.beta.threads.runs.create,
+                assistant_id=self.assistant_id,
                 thread_id=thread_id,
-                message_id=message_id,
             )
-        except Exception as e:
-            self.logger.exception(f"Ошибка при извлечении сообщения {message_id} из thread {thread_id}.")
-            return None
-
-    # ---------- RUNS ----------
-    async def run_assistant(self, thread_id: str, tools: Optional[list] = None) -> Optional[str]:
-        """Запустить ассистента на thread. tools — список инструментов (code_interpreter, retrieval, function)."""
-        try:
-            kwargs = dict(assistant_id=self.assistant_id, thread_id=thread_id)
-            if tools:
-                kwargs["tools"] = tools
-            run_obj = await asyncio.to_thread(self.client.beta.threads.runs.create, **kwargs)
             self.logger.info(f"Создан run {run_obj.id} для thread {thread_id}")
             return run_obj.id
         except Exception as e:
             self.logger.exception(f"Ошибка при создании run для thread {thread_id}.")
             return None
 
-    async def retrieve_run(self, thread_id: str, run_id: str) -> Any:
-        try:
-            return await asyncio.to_thread(self.client.beta.threads.runs.retrieve, thread_id=thread_id, run_id=run_id)
-        except Exception as e:
-            self.logger.error(f"Ошибка получения run: {e}")
-            return None
-
-    async def list_runs(self, thread_id: str) -> list:
-        try:
-            page = await asyncio.to_thread(self.client.beta.threads.runs.list, thread_id=thread_id)
-            return list(page)
-        except Exception as e:
-            self.logger.error(f"Ошибка получения списка runs: {e}")
-            return []
-
-    # ---------- STEPS ----------
-    async def get_run_steps(self, thread_id: str, run_id: str) -> list:
+    async def get_run_steps(self, thread_id: str, run_id: str) -> List[Any]:
         try:
             steps_page = await asyncio.to_thread(
                 self.client.beta.threads.runs.steps.list,
@@ -237,43 +126,18 @@ class OpenAIClientAsync:
             self.logger.exception(f"Ошибка при получении run steps для run {run_id}.")
             return []
 
-    # ---------- FILES ----------
-    async def upload_file(self, file_path: str, purpose: str = "assistants") -> Optional[str]:
-        """Загрузить файл для ассистента/инструмента."""
+    async def retrieve_message(self, thread_id: str, message_id: str) -> Any:
         try:
-            with open(file_path, "rb") as f:
-                file_obj = await asyncio.to_thread(self.client.files.create, file=f, purpose=purpose)
-            self.logger.info(f"Файл {file_obj.id} загружен для {purpose}")
-            return file_obj.id
+            msg_obj = await asyncio.to_thread(
+                self.client.beta.threads.messages.retrieve,
+                thread_id=thread_id,
+                message_id=message_id,
+            )
+            return msg_obj
         except Exception as e:
-            self.logger.error(f"Ошибка загрузки файла: {e}")
+            self.logger.exception(f"Ошибка при извлечении сообщения {message_id} из thread {thread_id}.")
             return None
 
-    async def list_files(self, purpose: Optional[str] = None) -> list:
-        try:
-            page = await asyncio.to_thread(self.client.files.list, purpose=purpose) if purpose else await asyncio.to_thread(self.client.files.list)
-            return list(page)
-        except Exception as e:
-            self.logger.error(f"Ошибка получения списка файлов: {e}")
-            return []
-
-    async def retrieve_file(self, file_id: str) -> Any:
-        try:
-            return await asyncio.to_thread(self.client.files.retrieve, file_id)
-        except Exception as e:
-            self.logger.error(f"Ошибка получения файла: {e}")
-            return None
-
-    async def delete_file(self, file_id: str) -> bool:
-        try:
-            await asyncio.to_thread(self.client.files.delete, file_id)
-            self.logger.info(f"Файл {file_id} удалён")
-            return True
-        except Exception as e:
-            self.logger.error(f"Ошибка удаления файла: {e}")
-            return False
-
-    # ---------- HELPERS ----------
     def extract_text_from_content(self, content: Any) -> str:
         if content is None:
             return ""
@@ -296,10 +160,11 @@ class OpenAIClientAsync:
                 return content.text.value
             except Exception:
                 return str(content.text)
+        return str(content)
 
     async def poll_run_steps(self, thread_id: str, run_id: str, chat_id: int,
                             bot: Bot,
-                            max_attempts: int = 20, interval: int = 1) -> str:
+                            max_attempts: int = 20, interval: int = 2) -> str:
         final_answer: Optional[str] = None
         for attempt in range(1, max_attempts + 1):
             try:
@@ -317,43 +182,17 @@ class OpenAIClientAsync:
                         if msg_obj:
                             content = getattr(msg_obj, "content", None)
                             final_answer = self.extract_text_from_content(content)
-        try:
-            await bot.send_chat_action(chat_id, action="typing")
-        except Exception:
-            pass
-        steps = await self.get_run_steps(thread_id, run_id)
-        for step in steps:
-            step_details = getattr(step, "step_details", None)
-            if step_details and getattr(step_details, "type", "") == "message_creation":
-                msg_creation = step_details.message_creation
-                message_id = getattr(msg_creation, "message_id", None)
-                if message_id:
-                    msg_obj = await self.retrieve_message(thread_id, message_id)
-                    if msg_obj:
-                        content = getattr(msg_obj, "content", None)
-                        final_answer = self.extract_text_from_content(content)
-            steps = await self.get_run_steps(thread_id, run_id)
-            for step in steps:
-                step_details = getattr(step, "step_details", None)
-                if step_details and getattr(step_details, "type", "") == "message_creation":
-                    msg_creation = step_details.message_creation
-                    message_id = getattr(msg_creation, "message_id", None)
-                    if message_id:
-                        msg_obj = await self.retrieve_message(thread_id, message_id)
-                        if msg_obj:
-                            content = getattr(msg_obj, "content", None)
-                            final_answer = self.extract_text_from_content(content)
                             if final_answer and final_answer.strip():
                                 self.logger.info(f"Ответ ассистента получен на попытке {attempt}.")
                                 return final_answer
             await asyncio.sleep(interval)
         return final_answer or "❗️ Не удалось получить ответ от ассистента. Попробуйте позже."
 
-    async def process_user_request(self, thread_id: str, user_question: str, chat_id: int, bot: Bot, tools: Optional[list] = None) -> str:
+    async def process_user_request(self, thread_id: str, user_question: str, chat_id: int, bot: Bot) -> str:
         ok = await self.send_message(thread_id, user_question)
         if not ok:
             return "❗️ Ошибка при отправке сообщения. Попробуйте позже."
-        run_id = await self.run_assistant(thread_id, tools=tools)
+        run_id = await self.run_assistant(thread_id)
         if not run_id:
             return "❗️ Ошибка при запуске ассистента. Попробуйте позже."
         final_answer = await self.poll_run_steps(thread_id, run_id, chat_id=chat_id, bot=bot)
@@ -382,10 +221,12 @@ async def cmd_start(message: types.Message):
     user_id = message.from_user.id
     if user_id not in user_threads:
         try:
-            thread_id = await openai_client_async.create_thread()
+            thread_obj = await asyncio.to_thread(create_thread_for_user)
+            thread_id = getattr(thread_obj, "id", None)
             if not thread_id:
-                await message.answer("Ошибка: не получен thread ID от OpenAI.")
+                await message.answer("Ошибка: не получен thread ID.")
                 return
+
             user_threads[user_id] = thread_id
             logger.info(f"Thread {thread_id} создан для пользователя {user_id}")
         except Exception as e:
@@ -397,10 +238,10 @@ async def cmd_start(message: types.Message):
 
     welcome_text = (
         f"Привет, я твой помощник!\n"
-        f"Твой thread ID: <code>{thread_id}</code>\n"
-        f"Чтобы задать вопрос, используй команду: /ask &lt;твой вопрос&gt;"
+        f"Твой thread ID: {thread_id}\n"
+        f"Чтобы задать вопрос, используй команду: /ask <твой вопрос>"
     )
-    await message.answer(welcome_text, parse_mode=ParseMode.HTML)
+    await message.answer(welcome_text)
 
 @router.message(Command("ask"))
 async def cmd_ask(message: types.Message):
@@ -422,15 +263,12 @@ async def cmd_ask(message: types.Message):
     await message.answer("Подумаем над ответом…")
 
     try:
-        answer = await openai_client_async.process_user_request(thread_id, user_question, message.chat.id, bot)
-        # Удаляем все <br> и <br/> для Telegram
-        import re
-        answer = re.sub(r'<br\s*/?>', '\n', answer)
+        answer = await asyncio.to_thread(process_user_request, thread_id, user_question, message.chat.id)
         await message.answer(f"Ответ ассистента:\n\n{answer}", parse_mode=ParseMode.HTML)
 
     except Exception as e:
         logger.exception("Ошибка при получении ответа от ассистента.")
-        await message.answer(f"Произошла ошибка: {e}", parse_mode=ParseMode.HTML)
+        await message.answer(f"Произошла ошибка: {e}", parse_mode=types.ParseMode.HTML)
 
 
 @router.message(lambda message: message.content_type == "text")
